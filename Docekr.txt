@@ -1,0 +1,76 @@
+pipeline {
+    agent any
+    
+    environment {
+        // Set environment variables for Docker image details
+        DOCKER_IMAGE = "aditya9503/nodejs:latest"
+        DOCKER_REGISTRY = "docker.io"
+        GIT_REPO_URL = "https://github.com/Aditya-Chahande/nodejs.git"
+        KUBECONFIG = 'C:\\Users\\Pragati Medical\\.kube\\config'
+        K8S_DEPLOYMENT_NAME = "nodejs-deployment"  // Modify this as per your Kubernetes deployment name
+        K8S_NAMESPACE = "default"                  // You can change the namespace if necessary
+    }
+
+    stages {
+        stage('Checkout') {
+    steps {
+        // Specify the branch explicitly (e.g., 'main' or the correct branch)
+        git branch: 'main', url: "$GIT_REPO_URL"
+    }
+}
+
+
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    // Build the Docker image from the cloned repository
+                    bat "docker build -t $DOCKER_IMAGE ."
+                }
+            }
+        }
+
+        stage('Login to Docker Registry') {
+    steps {
+        script {
+            // Use the Jenkins credentials binding to securely login
+            withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', passwordVariable: 'DOCKER_PASSWORD', usernameVariable: 'DOCKER_USERNAME')]) {
+                bat """
+                docker login -u %DOCKER_USERNAME% -p %DOCKER_PASSWORD% docker.io
+                """
+            }
+        }
+    }
+}
+
+
+        stage('Push Docker Image') {
+            steps {
+                script {
+                    // Push the Docker image to Docker Hub
+                    bat "docker push $DOCKER_IMAGE"
+                }
+            }
+        }
+
+        stage('Deploy to Kubernetes') {
+            steps {
+                script {
+                    // Deploy the image to your Kubernetes cluster
+                    bat """
+                    kubectl set image deployment/$K8S_DEPLOYMENT_NAME $K8S_DEPLOYMENT_NAME=$DOCKER_IMAGE --namespace=$K8S_NAMESPACE
+                    kubectl rollout status deployment/$K8S_DEPLOYMENT_NAME --namespace=$K8S_NAMESPACE
+                    """
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo 'Build, push, and deploy successful!'
+        }
+        failure {
+            echo 'Something went wrong.'
+        }
+    }
+}
